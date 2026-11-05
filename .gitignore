@@ -1,0 +1,9 @@
+.DS_Store
+Thumbs.db
+*.tmp
+~$*
+__pycache__/
+*.pyc
+
+# 微信合集页原始 HTML：仅本地重建索引用，含页面自带会话参数且体积较大
+source/

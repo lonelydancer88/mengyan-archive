@@ -30864,6 +30864,8 @@ footer{margin-top:36px;color:var(--muted);font-size:12px;line-height:1.9}
   const items=[...document.querySelectorAll('.item')];
   const seqs=items.map(x=>+x.dataset.seq);
   let current=null;
+  let savedY=0;
+  const base=location.pathname+location.search;
 
   q.addEventListener('input',()=>{
     const k=q.value.trim().toLowerCase();
@@ -30876,10 +30878,18 @@ footer{margin-top:36px;color:var(--muted);font-size:12px;line-height:1.9}
     });
   });
 
+  // 用 History API 改地址栏，不触发浏览器按 hash 定位（那会把列表滚到页首/页尾）
+  function setUrl(seq,replace){
+    const url=seq==null?base:base+'#doc-'+seq;
+    history[replace?'replaceState':'pushState']({doc:seq},'',url);
+  }
   function openDoc(seq){
+    if(current===seq&&overlay.classList.contains('on'))return;
     const src=document.getElementById('doc-'+seq);
     const item=items.find(x=>+x.dataset.seq===seq);
     if(!src||!item)return;
+    // 只有从列表进入时记位置；阅读器内翻页不覆盖
+    if(!overlay.classList.contains('on'))savedY=window.scrollY||document.documentElement.scrollTop||0;
     rbody.innerHTML=src.textContent;
     rtitle.textContent=item.querySelector('.title').textContent;
     rmeta.textContent=item.dataset.date+' · '+item.querySelector('.meta').textContent;
@@ -30891,11 +30901,31 @@ footer{margin-top:36px;color:var(--muted);font-size:12px;line-height:1.9}
     overlay.classList.add('on');
     document.body.style.overflow='hidden';
     rbody.scrollTop=0;
+    window.scrollTo(0,savedY);
   }
   function closeDoc(){
+    const wasOpen=overlay.classList.contains('on');
+    const y=savedY,seq=current;
     overlay.classList.remove('on');
     document.body.style.overflow='';
     current=null;
+    if(!wasOpen)return;
+    // 移除 overflow 后立刻归位，并在下一帧兜底一次
+    window.scrollTo(0,y);
+    requestAnimationFrame(()=>window.scrollTo(0,y));
+    const it=items.find(x=>+x.dataset.seq===seq);
+    if(it)it.querySelector('.title').focus({preventScroll:true});
+  }
+  function dismiss(){
+    if(location.hash)setUrl(null,true);
+    closeDoc();
+  }
+  function go(offset){
+    const i=seqs.indexOf(current);
+    const t=seqs[i+offset];
+    if(t==null)return;
+    setUrl(t,true);
+    openDoc(t);
   }
   function sync(){
     const m=/^#doc-(\d+)$/.exec(location.hash);
@@ -30905,21 +30935,27 @@ footer{margin-top:36px;color:var(--muted);font-size:12px;line-height:1.9}
     item.querySelector('.title').addEventListener('click',e=>{
       e.preventDefault();
       const seq=+item.dataset.seq;
-      if(location.hash==='#doc-'+seq)openDoc(seq); else location.hash='doc-'+seq;
+      if(location.hash!=='#doc-'+seq)setUrl(seq,false);
+      openDoc(seq);
     });
   });
-  document.getElementById('rclose').addEventListener('click',()=>{location.hash='';closeDoc();});
-  overlay.addEventListener('click',e=>{if(e.target===overlay){location.hash='';closeDoc();}});
+  document.getElementById('rclose').addEventListener('click',dismiss);
+  overlay.addEventListener('click',e=>{if(e.target===overlay)dismiss();});
   document.addEventListener('keydown',e=>{
-    if(e.key==='Escape'&&overlay.classList.contains('on')){location.hash='';closeDoc();}
     if(!overlay.classList.contains('on'))return;
-    const i=seqs.indexOf(current);
-    if(e.key==='ArrowLeft'&&i>0)location.hash='doc-'+seqs[i-1];
-    if(e.key==='ArrowRight'&&i<seqs.length-1)location.hash='doc-'+seqs[i+1];
+    if(e.key==='Escape'){e.preventDefault();dismiss();return;}
+    if(e.key==='ArrowLeft')go(-1);
+    if(e.key==='ArrowRight')go(1);
   });
-  rprev.addEventListener('click',()=>{const i=seqs.indexOf(current);if(i>0)location.hash='doc-'+seqs[i-1];});
-  rnext.addEventListener('click',()=>{const i=seqs.indexOf(current);if(i<seqs.length-1)location.hash='doc-'+seqs[i+1];});
+  rprev.addEventListener('click',()=>go(-1));
+  rnext.addEventListener('click',()=>go(1));
+  window.addEventListener('popstate',sync);
   window.addEventListener('hashchange',sync);
+  // 带深链接直接进来时，浏览器可能试图滚到页尾的内嵌 script，先归位
+  if(location.hash){
+    window.scrollTo(0,0);
+    window.addEventListener('load',()=>window.scrollTo(0,0));
+  }
   sync();
 })();
 </script></body></html>
